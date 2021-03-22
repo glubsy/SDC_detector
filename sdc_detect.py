@@ -9,7 +9,7 @@
 # 2) serialize the result
 # 3) do the same for another dir
 # 4) compare the results by iteration
-# 
+#
 # To consider: write to file by chunks (buffer)
 # don't keep everything in memory, use iterator / generators
 
@@ -21,9 +21,8 @@ import time
 import functools
 from pathlib import Path
 import hashlib
-import crccheck
-import zlib
-import binascii
+# import zlib
+import binascii # crc32 seems a tiny bit faster than zlib?
 
 BUF_SIZE = 65536  # arbitrary value of 64kb chunks!
 logger = logging.getLogger(__name__)
@@ -36,10 +35,26 @@ def timer(func):
         value = func(*args)
         end = time.perf_counter_ns()
         total = end - start
-        print(f"TIMER: function {func.__name__!r} took {total} ns.")
-        # times[func.__name__] = total
+        arg_one = ""
+        if len(args) > 1:
+            arg_one = args[1]
+        print(f"TIMER: {func.__name__!r}({arg_one}) took {total} ns.")
         return value
     return wrapper_timer
+
+
+def recursive_stat(base_path):
+    if not os.access(base_path, os.R_OK):
+        return
+    for root, dirs, files in os.walk(base_path):
+        for f in files:
+            fpath = root + os.sep + f
+            print(f"Hashes for {fpath}:")
+            print("sha1: " + get_hash(fpath, 'sha1'))
+            print("sha256: " + get_hash(fpath, 'sha256'))
+            print("md5: " + get_hash(fpath, 'md5'))
+            print("crc32 binascii: " + get_crc32(fpath, 'binascii'))
+
 
 def generate(base_dir):
     base_path = Path(base_dir)
@@ -69,80 +84,29 @@ def generate(base_dir):
     op.close()
 
 @timer
-def get_sha(filename):
-    sha = hashlib.sha1()
+def get_hash(filename, hashtype):
+    """sha1, sha256, md5"""
+    _hash = hashlib.new(hashtype, usedforsecurity=False)
     with open(filename, 'rb') as fp:
         while True:
             data = fp.read(BUF_SIZE)
             if not data:
                 break
-            sha.update(data)
-    shahex = sha.hexdigest()
-    print(f"sha for {filename}: {shahex}")
-    return shahex
+            _hash.update(data)
+    hash_hex = _hash.hexdigest()
+    return hash_hex
 
 @timer
-def get_crc32_buffered(filename):
-    """This is slow!?"""
-    crcinst = crccheck.crc.Crc32()
-    with open(filename, 'rb') as fp:
-        while True:
-            data = fp.read(BUF_SIZE)
-            if not data:
-                break
-            crcinst.process(data)
-    crchex = crcinst.finalhex()
-    print(f"crccheck buffered for {filename}: {crchex}")
-    return crchex
-
-@timer
-def get_crc32(filename):
-    """This is slow!?"""
-    with open(filename, 'rb') as fp:
-        data = fp.read()
-        crc = crccheck.crc.Crc32.calchex(data)
-        # checksum = crccheck.checksum.Checksum32.calchex(data)
-    print(f"crccheck crc32 for {filename}: {crc}")
-    return crc
-
-@timer
-def CRC32_from_file(filename):
+def get_crc32(filename, provider):
+    """provider: "binascii" or "zlib" (same interface in this case)."""
     with open(filename,'rb') as fp:
         crc = 0
         while True:
             data = fp.read(BUF_SIZE)
             if not data:
                 break
-            crc = binascii.crc32(data, crc)
-    crchex = "{:#010x}".format(crc)
-    print("crc32_from_file: " + crchex)
-    return crchex
-
-@timer
-def get_crc32_zlib(filename):
-    with open(filename,'rb') as fp:
-        crc = 0
-        while True:
-            data = fp.read(BUF_SIZE)
-            if not data:
-                break
-            crc = zlib.crc32(data, crc)
-    crchex = "{:#010x}".format(crc)
-    print("zlib crc32: " + crchex)
-    return crchex
-
-def recursive_stat(base_path):
-    if not os.access(base_path, os.R_OK):
-        return
-
-    for root, dirs, files in os.walk(base_path):
-        for f in files:
-            fpath = root + os.sep + f
-            get_sha(fpath)
-            get_crc32(fpath)
-            get_crc32_buffered(fpath)
-            CRC32_from_file(fpath)
-            get_crc32_zlib(fpath)
+            crc = eval(provider).crc32(data, crc)
+    return f"{crc:x}"
 
 
 def compare(path1, path2):
@@ -166,16 +130,16 @@ if __name__ == "__main__":
     parser.add_argument('--output_dir', default="./", type=str,\
             help="Output directory where to write results.")
     hashes = ('sha1', 'sha256', 'crc32', 'md5')
-    parser.add_argument('-c', action='store', dest='hash_name', default="sha1", 
+    parser.add_argument('-c', action='store', dest='hash_name', default="crc32",
         choices=hashes,
         help='hash function for checksum', required=False)
     levels = ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
-    parser.add_argument('--log', action='store', default="DEBUG", 
+    parser.add_argument('--log', action='store', default="DEBUG",
         choices=levels,
         help='Log level. [DEBUG, INFO, WARNING, ERROR, CRITICAL]')
     args = parser.parse_args()
     logger.setLevel(args.log)
-    
+
     # if args.path2:
     #     compare(args.path1, args.path2)
     #     exit(0)
