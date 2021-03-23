@@ -1,4 +1,4 @@
-#!/bin/env python
+#!/bin/env python3
 
 # 1) Get md5 or crc32 or sha1 of each file in a dir
 # 2) store results in a data structure (dict?)
@@ -10,19 +10,33 @@
 # 3) do the same for another dir
 # 4) compare the results by iteration
 #
-# To consider: write to file by chunks (buffer)
-# don't keep everything in memory, use iterator / generators
+# TODO: if possible
+# * write to file in chunks (buffered, not possible
+# with serialization of python objects into json or yaml sadly)
+# * don't keep everything in memory, use iterators / generators
 
 import os
 import argparse
 import logging
-from datetime import datetime, date
+from datetime import datetime
 import time
 import functools
 from pathlib import Path
+
 import hashlib
 # import zlib
 import binascii # crc32 seems a tiny bit faster than zlib?
+
+from yaml import load, dump, parse
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    from yaml import Loader, Dumper
+import pprint
+
+# import dictdiffer # smaller, faster but cannot traverse results
+import deepdiff
+
 
 BUF_SIZE = 65536  # arbitrary value of 64kb chunks!
 logger = logging.getLogger(__name__)
@@ -38,49 +52,80 @@ def timer(func):
         arg_one = ""
         if len(args) > 1:
             arg_one = args[1]
-        print(f"TIMER: {func.__name__!r}({arg_one}) took {total} ns.")
+        logger.debug(f"TIMER: {func.__name__!r}({arg_one}) took {total} ns.")
         return value
     return wrapper_timer
 
 
 def recursive_stat(base_path):
+    directory = {}
+
     if not os.access(base_path, os.R_OK):
-        return
+        return directory
+
     for root, dirs, files in os.walk(base_path):
-        for f in files:
-            fpath = root + os.sep + f
-            print(f"Hashes for {fpath}:")
-            print("sha1: " + get_hash(fpath, 'sha1'))
-            print("sha256: " + get_hash(fpath, 'sha256'))
-            print("md5: " + get_hash(fpath, 'md5'))
-            print("crc32 binascii: " + get_crc32(fpath, 'binascii'))
+        dn = os.path.basename(root)
+        directory[dn] = []
+
+        if dirs:
+            for d in dirs:
+                directory[dn].append(
+                    recursive_stat(base_path=os.path.join(base_path, d)
+                    )
+                )
+            for f in files:
+                file_info = get_file_info(root, f)
+                logger.debug(f"file_info: {file_info}")
+                directory[dn].append(file_info)
+        else:
+            directory[dn].append([get_file_info(root, f) for f in files])
+
+        return directory
+
+
+def get_file_info(root, filename):
+    fpath = os.path.join(root, filename)
+    # return { filename:
+    #     {
+    #         'crc': get_crc32(fpath, 'binascii'),
+    #         'size': os.stat(fpath).st_size
+    #     }
+    # }
+    return { filename:
+        [
+            get_crc32(fpath, 'binascii'),
+            os.stat(fpath).st_size
+        ]
+    }
+    # return [filename, get_crc32(fpath, 'binascii'), os.stat(fpath).st_size]
 
 
 def generate(base_dir):
     base_path = Path(base_dir)
-    op = open(args.output_dir + os.sep + "hashes_" +  date.fromtimestamp(time.time()).__str__() + ".txt", 'w')
+    op = open(args.output_dir
+            + os.sep
+            + os.path.basename(base_path)
+            + "_hashes_"
+            +  datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            + ".txt",
+            'w')
 
-    recursive_stat(base_path)
-
-    # for _file in base_path.iterdir():
-    #     # mtime = _file.stat().st_mtime
-    #     fsize = _file.stat().st_size
-    #     # sha = hashlib.sha256()
-    #     crcinst = crccheck.crc.Crc32()
-    #     with open(_file, 'rb') as fp:
-    #         while True:
-    #             data = fp.read(BUF_SIZE)
-    #             if not data:
-    #                 break
-    #             # sha.update(data)
-    #             crcinst.process(data)
-    #     # crchex = sha.hexdigest()
-    #     crchex = crcinst.finalhex()
-
-    #     out_line = [_file.relative_to(base_path), crchex, str(fsize)]
-    #     logger.info(f"{out_line}")
-    #     print(out_line, sep="\t", file=op)
-
+    # if not os.access(base_path, os.R_OK):
+    #     return
+    # for root, dirs, files in os.walk(base_path):
+    #     items = []
+    #     for f in files:
+    #         fpath = root + os.sep + f
+    #         print(f"Hashes for {fpath}:")
+    #         print("sha1: " + get_hash(fpath, 'sha1'))
+    #         print("sha256: " + get_hash(fpath, 'sha256'))
+    #         print("md5: " + get_hash(fpath, 'md5'))
+    #         crc = get_crc32(fpath, 'binascii')
+    #         print("crc32 binascii: " + crc)
+    #         items.append([fpath, crc, os.stat(fpath).st_size])
+    #     output = dump(items, stream=op, Dumper=Dumper)
+    dir_content = recursive_stat(base_path)
+    dump(dir_content, stream=op, Dumper=Dumper)
     op.close()
 
 @timer
@@ -108,25 +153,35 @@ def get_crc32(filename, provider):
             crc = eval(provider).crc32(data, crc)
     return f"{crc:x}"
 
-
+@timer
 def compare(path1, path2):
     """Compare each line from path1 to each line to path2, return any difference"""
+    # TODO error on:
+    # hash is '0'
+    # size is 0
+    # name is different
+    # number of item is different / item is
     with open(Path(path1), 'r') as p1, open(Path(path2), 'r') as p2:
-        l1 = p1.readline()
-        l2 = p2.readline()
-        if l1.split("\t")[0] != l2.split("\t")[0]:
-            # path are different!
-            logger.error(f"{l1} != {l2}!")
-            return
-    return
+        t1 = load(p1, Loader=Loader)
+        t2 = load(p2, Loader=Loader)
+    logger.debug(dump(t1, stream=None, Dumper=Dumper))
+    logger.debug(dump(t2, stream=None, Dumper=Dumper))
 
+    ddiff_verbose0 = deepdiff.DeepDiff(t1, t2, verbose_level=2, view='text')
+    pprint.pprint(ddiff_verbose0, indent=2)
+    set_changed = ddiff_verbose0['values_changed']
+    changed = list(set_changed)[0]
+    for change in changed:
+        print(f"changed: {change}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    # TODO detect if paths point to a file or a directory, to keep scan content
+    # in memory and avoid reloading from serialized file
     parser.add_argument('path1', type=str,
         help='Path to base directory to scan for files, or path to output file to compare.')
-    # parser.add_argument('path2', type=str, default=None,
-    #     help='Compare file with path1 for differences.')
+    parser.add_argument('path2', type=str, default=None, nargs='?',
+        help='Compare file with path1 for differences.')
     parser.add_argument('--output_dir', default="./", type=str,\
             help="Output directory where to write results.")
     hashes = ('sha1', 'sha256', 'crc32', 'md5')
@@ -138,10 +193,17 @@ if __name__ == "__main__":
         choices=levels,
         help='Log level. [DEBUG, INFO, WARNING, ERROR, CRITICAL]')
     args = parser.parse_args()
-    logger.setLevel(args.log)
 
-    # if args.path2:
-    #     compare(args.path1, args.path2)
-    #     exit(0)
+    log_level = getattr(logging, args.log.upper(), None)
+    if not isinstance(log_level, int):
+        raise ValueError(f'Invalid log level: {args.log}')
+    logger.setLevel(log_level)
+    conhandler = logging.StreamHandler()
+    conhandler.setLevel(log_level)
+    logger.addHandler(conhandler)
+
+    if args.path2:
+        compare(args.path1, args.path2)
+        exit(0)
 
     generate(args.path1)
