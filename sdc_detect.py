@@ -37,7 +37,6 @@ import pprint
 # import dictdiffer # smaller, faster but cannot traverse results
 import deepdiff
 
-
 BUF_SIZE = 65536  # arbitrary value of 64kb chunks!
 logger = logging.getLogger(__name__)
 
@@ -49,13 +48,9 @@ def timer(func):
         value = func(*args)
         end = time.perf_counter_ns()
         total = end - start
-        arg_one = ""
-        if len(args) > 1:
-            arg_one = args[1]
-        logger.debug(f"TIMER: {func.__name__!r}({arg_one}) took {total} ns.")
+        logger.debug(f"TIMER: {func.__name__!r} took {total} ns.")
         return value
     return wrapper_timer
-
 
 def recursive_stat(base_path):
     directory = {}
@@ -77,56 +72,44 @@ def recursive_stat(base_path):
                 file_info = get_file_info(root, f)
                 logger.debug(f"file_info: {file_info}")
                 directory[dn].append(file_info)
-        else:
+        elif files:
             directory[dn].append([get_file_info(root, f) for f in files])
 
         return directory
 
-
 def get_file_info(root, filename):
     fpath = os.path.join(root, filename)
-    # return { filename:
-    #     {
-    #         'crc': get_crc32(fpath, 'binascii'),
-    #         'size': os.stat(fpath).st_size
-    #     }
-    # }
     return { filename:
-        [
-            get_crc32(fpath, 'binascii'),
-            os.stat(fpath).st_size
-        ]
+        {
+            'crc': get_crc32(fpath, 'binascii'),
+            'size': os.stat(fpath).st_size
+        }
     }
+    # return { filename:
+    #     [
+    #         get_crc32(fpath, 'binascii'),
+    #         os.stat(fpath).st_size
+    #     ]
+    # }
     # return [filename, get_crc32(fpath, 'binascii'), os.stat(fpath).st_size]
 
-
-def generate(base_dir):
-    base_path = Path(base_dir)
-    op = open(args.output_dir
-            + os.sep
-            + os.path.basename(base_path)
-            + "_hashes_"
-            +  datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            + ".txt",
-            'w')
-
-    # if not os.access(base_path, os.R_OK):
-    #     return
-    # for root, dirs, files in os.walk(base_path):
-    #     items = []
-    #     for f in files:
-    #         fpath = root + os.sep + f
-    #         print(f"Hashes for {fpath}:")
-    #         print("sha1: " + get_hash(fpath, 'sha1'))
-    #         print("sha256: " + get_hash(fpath, 'sha256'))
-    #         print("md5: " + get_hash(fpath, 'md5'))
-    #         crc = get_crc32(fpath, 'binascii')
-    #         print("crc32 binascii: " + crc)
-    #         items.append([fpath, crc, os.stat(fpath).st_size])
-    #     output = dump(items, stream=op, Dumper=Dumper)
+def generate(base_path, write=True):
+    if write:
+        op = open(args.output_dir
+                + os.sep
+                + os.path.basename(base_path)
+                + "_hashes_"
+                +  datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                + ".txt",
+                'w')
     dir_content = recursive_stat(base_path)
-    dump(dir_content, stream=op, Dumper=Dumper)
-    op.close()
+    dir_content['root'] = dir_content.pop(base_path.name)
+
+    if write:
+        dump(dir_content, stream=op, Dumper=Dumper)
+        op.close()
+
+    return dir_content
 
 @timer
 def get_hash(filename, hashtype):
@@ -142,7 +125,7 @@ def get_hash(filename, hashtype):
     return hash_hex
 
 @timer
-def get_crc32(filename, provider):
+def get_crc32(filename, provider='binascii'):
     """provider: "binascii" or "zlib" (same interface in this case)."""
     with open(filename,'rb') as fp:
         crc = 0
@@ -153,35 +136,52 @@ def get_crc32(filename, provider):
             crc = eval(provider).crc32(data, crc)
     return f"{crc:x}"
 
+def load_yaml(fpath):
+    with open(fpath, 'r') as fp:
+        return load(fp, Loader=Loader)
+
 @timer
-def compare(path1, path2):
+def compare(d1, d2):
     """Compare each line from path1 to each line to path2, return any difference"""
     # TODO error on:
     # hash is '0'
     # size is 0
     # name is different
-    # number of item is different / item is
-    with open(Path(path1), 'r') as p1, open(Path(path2), 'r') as p2:
-        t1 = load(p1, Loader=Loader)
-        t2 = load(p2, Loader=Loader)
-    logger.debug(dump(t1, stream=None, Dumper=Dumper))
-    logger.debug(dump(t2, stream=None, Dumper=Dumper))
+    # number of item is different / item is missing
 
-    ddiff_verbose0 = deepdiff.DeepDiff(t1, t2, verbose_level=2, view='text')
-    pprint.pprint(ddiff_verbose0, indent=2)
-    set_changed = ddiff_verbose0['values_changed']
-    changed = list(set_changed)[0]
-    for change in changed:
-        print(f"changed: {change}")
+    ddiff = deepdiff.DeepDiff(d1, d2,
+        verbose_level=2,
+        view='tree',
+        ignore_order=False,
+        ignore_string_type_changes=True,
+        )
+    pprint.pprint(ddiff, indent=2)
+
+    # ddiff.to_dict(view_override='text')
+    print(ddiff.to_dict(view_override='text'))
+    print(f"PRETTY:\n{ddiff.pretty()}")
+
+    set_changed = ddiff.get('values_changed')
+    if set_changed is not None:
+        list_changed = list(set_changed)
+        for change in list_changed:
+            print(f"path: {change.path()}")
+
+    set_added = ddiff.get('iterable_item_added')
+    if set_added is not None:
+        list_added = list(set_added)
+        for item in set_added:
+            print(f"added path: {item.path()} -> t2: {item.t2}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # TODO detect if paths point to a file or a directory, to keep scan content
     # in memory and avoid reloading from serialized file
     parser.add_argument('path1', type=str,
-        help='Path to base directory to scan for files, or path to output file to compare.')
+        help='Path to directory to scan for files, or path to output file.')
     parser.add_argument('path2', type=str, default=None, nargs='?',
-        help='Compare file with path1 for differences.')
+        help='Path to directory to scan for files, or path to output file.')
     parser.add_argument('--output_dir', default="./", type=str,\
             help="Output directory where to write results.")
     hashes = ('sha1', 'sha256', 'crc32', 'md5')
@@ -202,8 +202,15 @@ if __name__ == "__main__":
     conhandler.setLevel(log_level)
     logger.addHandler(conhandler)
 
-    if args.path2:
-        compare(args.path1, args.path2)
+    if not args.path2:
+        generate(Path(args.path1), write=True)
         exit(0)
-
-    generate(args.path1)
+    path1 = Path(args.path1)
+    path2 = Path(args.path2)
+    dir_dict1 = generate(path1) if path1.is_dir else load_yaml(path1)
+    dir_dict2 = generate(path2) if path2.is_dir else load_yaml(path2)
+    logger.debug(dump(dir_dict1, stream=None, Dumper=Dumper))
+    logger.debug(dump(dir_dict1, stream=None, Dumper=Dumper))
+    pprint.pprint(dir_dict1)
+    pprint.pprint(dir_dict1)
+    compare(dir_dict1, dir_dict2)
