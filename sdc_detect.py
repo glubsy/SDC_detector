@@ -60,31 +60,93 @@ def timer(func):
     return wrapper_timer
 
 
-def recursive_stat_dict(base_path):
-    directory = {}
-    if not os.access(base_path, os.R_OK):
-        return directory
+class DirTreeGenerator:
+    """Default implementation uses Dicts."""
+    def __init__(self, path, args):
+        self._csum_name = args.csum_name
+        self._path = path # pathlib.Path
+        self._output_dir = args.output_dir
 
-    for root, dirs, files in os.walk(base_path):
-        dn = os.path.basename(root)
-        directory[dn] = []
-        # directory[dn] = {}
-        if dirs:
-            for d in dirs:
-                directory[dn].append(recursive_stat_dict(
-                # directory[dn][d] = recursive_stat_dict(
-                    base_path=os.path.join(base_path, d)
+    def recursive_stat(self, base_path):
+        directory = {}
+        if not os.access(base_path, os.R_OK):
+            return directory
+
+        for root, dirs, files in os.walk(base_path):
+            dn = os.path.basename(root)
+            directory[dn] = []
+            # directory[dn] = {}
+            if dirs:
+                for d in dirs:
+                    directory[dn].append(self.recursive_stat(
+                    # directory[dn][d] = self.recursive_stat(
+                        base_path=os.path.join(base_path, d)
+                        )
                     )
-                )
-            for f in files:
-                directory[dn].append(get_file_info_dict(root, f))
-                # directory[dn][f] = get_file_info_dict(root, f)
-        elif files:
-            # directory[dn].append([get_file_info_dict(root, f) for f in files])
-            for f in files:
-                directory[dn].append(get_file_info_dict(root, f))
-                # directory[dn][f] = get_file_info_dict(root, f)
-        return directory
+                for f in files:
+                    directory[dn].append(get_file_info_dict(root, f))
+                    # directory[dn][f] = get_file_info_dict(root, f)
+            elif files:
+                # directory[dn].append([get_file_info_dict(root, f) for f in files])
+                for f in files:
+                    directory[dn].append(get_file_info_dict(root, f))
+                    # directory[dn][f] = get_file_info_dict(root, f)
+            return directory
+
+    def generate(self, no_output=False):
+        dir_content = self._generate()
+        if not no_output:
+            with open(self._output_dir
+                    + os.sep
+                    + os.path.basename(self._path)
+                    + "_hashes_"
+                    +  datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                    + ".txt",
+                    'w') as op:
+                dump(dir_content, stream=op, Dumper=Dumper)
+        return dir_content
+
+    def _generate(self):
+        """Return dictionary representing dir tree structure."""
+        dir_content = self.recursive_stat(self._path)
+        # Rename the root node to be similar across comparisons
+        # dir_content['root'] = dir_content.pop(base_path.name)
+        dir_content['root'] = dir_content[self._path.name]
+        del dir_content[self._path.name]
+        return dir_content
+
+
+class DirTreeGeneratorList(DirTreeGenerator):
+    """Implementation around Lists."""
+    def __init__(self, path, args):
+        super().__init__(path, args)
+
+    def recursive_stat(self, base_path):
+        directory = []
+        if not os.access(base_path, os.R_OK):
+            return directory
+
+        for root, dirs, files in os.walk(base_path):
+            dn = os.path.basename(root)
+            directory.append(dn)
+            if dirs:
+                for d in dirs:
+                    directory.append(
+                        self.recursive_stat(base_path=os.path.join(base_path, d)
+                        )
+                    )
+                for f in files:
+                    directory.append(get_file_info_list(root, f))
+            elif files:
+                directory.append([get_file_info_list(root, f) for f in files])
+            return directory
+
+    def _generate(self):
+        """Returs List of Lists representing dir tree structure."""
+        dir_content = self.recursive_stat(self._path)
+        # Rename the root node since it will be different accross mounts
+        dir_content[0] = 'root'
+        return dir_content
 
 
 def get_file_info_dict(root, filename):
@@ -108,52 +170,6 @@ def get_file_info_list(root, filename):
     fpath = os.path.join(root, filename)
     return [filename, get_crc32(fpath), os.stat(fpath).st_size]
 
-
-def recursive_stat_list(base_path):
-    directory = []
-    if not os.access(base_path, os.R_OK):
-        return directory
-
-    for root, dirs, files in os.walk(base_path):
-        dn = os.path.basename(root)
-        directory.append(dn)
-        if dirs:
-            for d in dirs:
-                directory.append(
-                    recursive_stat_list(base_path=os.path.join(base_path, d)
-                    )
-                )
-            for f in files:
-                directory.append(get_file_info_list(root, f))
-        elif files:
-            directory.append([get_file_info_list(root, f) for f in files])
-        return directory
-
-
-def generate(base_path, struct_type="dict"):
-    if not args.no_output:
-        op = open(args.output_dir
-                + os.sep
-                + os.path.basename(base_path)
-                + "_hashes_"
-                +  datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                + ".txt",
-                'w')
-    if struct_type == "list":
-        dir_content = recursive_stat_list(base_path)
-        # Rename the root node since it will be different accross mounts
-        dir_content[0] = 'root'
-    elif struct_type == "dict":
-        dir_content = recursive_stat_dict(base_path)
-        # dir_content['root'] = dir_content.pop(base_path.name)
-        dir_content['root'] = dir_content[base_path.name]
-        del dir_content[base_path.name]
-
-    if not args.no_output:
-        dump(dir_content, stream=op, Dumper=Dumper)
-        op.close()
-
-    return dir_content
 
 @timer
 def get_hash(filename, hashtype):
@@ -186,18 +202,33 @@ def load_yaml(fpath):
         return load(fp, Loader=Loader)
 
 # @timer
-def compare(d1, d2):
+def ddiff_compare(tree1, tree2):
     """Compare each line from path1 to each line to path2, return any difference"""
+    type1 = type(tree1)
+    type2 = type(tree2)
+    if type1 != type2:
+        logging.critical("Types are different! Cannot diff.")
+        return
+    if type1 == "dict":
+        ignore_order = True
+    else:
+        ignore_order = False
     # TODO error on:
     # hash is '0'
     # size is 0
     # name is different? -> will not work!
     # number of item is different / item is missing
 
-    ddiff = deepdiff.DeepDiff(d1, d2,
+    # FIXME ddiff does not work well with list based tree structs:
+    # leaf nodes differences are not correctly reported: file names, size and
+    # crc values are randomly compared against one another which yields false
+    # changes. We then need ignore_order=True, but then another problem arises
+    # as filenames may be changed, their index in the lists are not always the
+    # same, so the comparisons are made between the wrong indices / items.
+    ddiff = deepdiff.DeepDiff(tree1, tree2,
         verbose_level=2,
         view='tree',
-        ignore_order=True,
+        ignore_order=ignore_order,
         ignore_string_type_changes=True,
         cutoff_distance_for_pairs=1.0,
         cutoff_intersection_for_pairs=1.0
@@ -205,8 +236,8 @@ def compare(d1, d2):
     pprint.pprint(ddiff, indent=2)
 
     pprint.pprint(ddiff.to_dict(view_override='text'), indent=2)
-    print(ddiff.to_dict(view_override='text'))
-    print(f"PRETTY:\n{ddiff.pretty()}")
+    logger.debug(ddiff.to_dict(view_override='text'))
+    logger.debug(f"PRETTY:\n{ddiff.pretty()}")
 
     set_changed = ddiff.get('values_changed')
     if set_changed is not None:
@@ -222,7 +253,9 @@ def compare(d1, d2):
 
 
 def compare_naive(d1, d2):
+    """Manual comparison of each tree node."""
     pass
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -236,11 +269,11 @@ if __name__ == "__main__":
             help="Output directory where to write results.")
     parser.add_argument('-n', '--no_output', action='store_true',\
             help="Do not write results to yaml or text files.")
-    # TODO add xxhash, probably don't need sha256
+    # TODO add xxhash, blake2b?
     hashes = ('sha1', 'sha256', 'crc32', 'md5')
-    parser.add_argument('-c', action='store', dest='hash_name', default="crc32",
+    parser.add_argument('-c', action='store', dest='csum_name', default="sha1",
         choices=hashes,
-        help='hash function for checksum', required=False)
+        help='hash or crc algorithm to use for integrity checking.', required=False)
     levels = ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
     parser.add_argument('--log', action='store', default="DEBUG",
         choices=levels,
@@ -255,16 +288,25 @@ if __name__ == "__main__":
     conhandler.setLevel(log_level)
     logger.addHandler(conhandler)
 
+    struct_type = "dict" # list, dict, ... mixed ?
+
     if not args.path2:
-        generate(Path(args.path1))
+        gen = DirTreeGenerator(Path(args.path1), args)
+        gen.generate(no_output=args.no_output)
         exit(0)
     path1 = Path(args.path1)
     path2 = Path(args.path2)
+    gen1 = DirTreeGenerator(path1, args)
+    gen2 = DirTreeGenerator(path2, args)
     # TODO threading here
-    dir_dict1 = generate(path1) if path1.is_dir else load_yaml(path1)
-    dir_dict2 = generate(path2) if path2.is_dir else load_yaml(path2)
+    dir_dict1 = gen1.generate(no_output=args.no_output) if path1.is_dir else load_yaml(path1)
+    dir_dict2 = gen2.generate(no_output=args.no_output) if path2.is_dir else load_yaml(path2)
+    logger.debug(f"Dump of generate() output:")
     logger.debug(dump(dir_dict1, stream=None, Dumper=Dumper))
     logger.debug(dump(dir_dict2, stream=None, Dumper=Dumper))
+    print(f"PPrint of dictionaries:")
     pprint.pprint(dir_dict1)
     pprint.pprint(dir_dict2)
-    compare(dir_dict1, dir_dict2)
+    # TODO extra option: for earch file listed in yaml, compare with a target
+    # dir (partial backups) only those files
+    ddiff_compare(dir_dict1, dir_dict2)
