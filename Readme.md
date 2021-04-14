@@ -8,10 +8,10 @@ The advantage over `rsync -c` is saving the results to a yaml file for further c
 ## Usage
 
 * Generate text result file:
-`python sdc_detect.py --output_dir ./ /path/to/directory`
+`python __main__.py --output_dir ./ /path/to/directory`
 
 * Compare two text result files:
-`python sdc_detect.py result1.txt result2.txt`
+`python __main__.py result1.txt result2.txt`
 
 NOTES:
 
@@ -23,6 +23,7 @@ deepdiff
 hashlib
 crc32c (optional)
 yaml
+pprint
 
 ## TODO
 
