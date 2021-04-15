@@ -4,6 +4,13 @@ import logging
 logger = logging.getLogger("sdc_detector")
 from datetime import datetime
 
+from yaml import load, dump, parse
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    from yaml import Loader, Dumper
+import pprint
+
 from .csum import * 
 
 
@@ -17,14 +24,16 @@ class DirTreeGenerator:
     def generate(self, no_output=False):
         dir_content = self._generate()
         if not no_output:
-            with open(self._output_dir
-                    + os.sep
-                    + os.path.basename(self._path)
-                    + "_hashes_"
+            filename = os.path.basename(self._path)\
+                    + "_hashes_"\
                     +  datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                    + ".txt",
-                    'w') as op:
+            fpath = self._output_dir\
+                    + os.sep\
+                    + filename\
+                    + ".txt"
+            with open(fpath, 'w') as op:
                 dump(dir_content, stream=op, Dumper=Dumper)
+            print(f"Wrote results to YAML file: {fpath}.")
         return dir_content
 
     # Virtual
@@ -226,3 +235,8 @@ def split_ddiff_path(string):
     res = [s.strip("\'") for s in re.search('\[(.+)\]', string).group(1).split('][')]
     logger.debug(f"split_ddif_path(): {res}")
     return res
+
+# @timer
+def load_yaml(fpath):
+    with open(fpath, 'r') as fp:
+        return load(fp, Loader=Loader)

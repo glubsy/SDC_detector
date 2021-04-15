@@ -18,8 +18,8 @@
 import os
 import argparse
 import logging
+import concurrent.futures
 logger = logging.getLogger("sdc_detector")
-
 from pathlib import Path
 
 from yaml import load, dump, parse
@@ -29,13 +29,10 @@ except ImportError:
     from yaml import Loader, Dumper
 import pprint
 
-from sdc_detector.tree import DirTreeGeneratorPureDict, DirTreeGeneratorList, DirTreeGeneratorMixed
+from sdc_detector.tree import DirTreeGeneratorPureDict, DirTreeGeneratorList,\
+    DirTreeGeneratorMixed, load_yaml
 from sdc_detector.diff import ddiff_compare
 
-
-def load_yaml(fpath):
-    with open(fpath, 'r') as fp:
-        return load(fp, Loader=Loader)
 
 # Obsolete
 def check_empty_items(base_tree):
@@ -130,27 +127,44 @@ if __name__ == "__main__":
         fs_struct_type = DirTreeGeneratorList
     else:
         fs_struct_type = DirTreeGeneratorPureDict
+    # TODO write tree type to yaml to avoid comparing different types of trees?
+    # for now we assume the same type was generated across scans.
 
     if not args.path2:
         gen = fs_struct_type(Path(args.path1), args)
         gen.generate(no_output=args.no_output)
         exit(0)
 
-    path1 = Path(args.path1)
-    path2 = Path(args.path2)
-    gen1 = fs_struct_type(path1, args)
-    gen2 = fs_struct_type(path2, args)
-    # TODO add threading here
-    # FIXME write tree type to yaml to avoid comparing different types of trees?
-    # for now we assume the same type was generated across scans.
-    dir_dict1 = gen1.generate(no_output=args.no_output) if path1.is_dir() else load_yaml(path1)
-    dir_dict2 = gen2.generate(no_output=args.no_output) if path2.is_dir() else load_yaml(path2)
-    logger.debug(f"Dump of generate() output:")
-    logger.debug(dump(dir_dict1, stream=None, Dumper=Dumper))
-    logger.debug(dump(dir_dict2, stream=None, Dumper=Dumper))
-    logger.debug(f"PPrint of dictionaries:")
-    pprint.pprint(dir_dict1)
-    pprint.pprint(dir_dict2)
+    args_set = (args.path1, args.path2)
+
+    executor = concurrent.futures.ProcessPoolExecutor()
+    queue = []
+    for path_str in args_set:
+        path = Path(path_str)
+        gen = fs_struct_type(path, args)
+        if path.is_dir():
+            future = executor.submit(gen.generate, no_output=args.no_output)
+        else:
+            future = executor.submit(load_yaml, path)
+        queue.append(future)
+    results = []
+    for future in queue:
+        results.append(future.result())
+    executor.shutdown()
+
+    for tree_struct in results:
+        logger.debug(f"Dump of generate() output:")
+        logger.debug(dump(tree_struct, stream=None, Dumper=Dumper))
+    if logger.isEnabledFor(logging.DEBUG):
+        for tree_struct in results:
+            logger.debug(f"PPrint of dictionaries:")
+            logger.debug(pprint.pformat(tree_struct))
+
     # TODO extra option: for each file listed in yaml, compare with a target
     # dir (partial backups) only those files.
-    ddiff_compare(dir_dict1, dir_dict2, fs_struct_type)
+    ddiff_compare(
+        # HACK always place first argument passed to the left hand side
+        results[args_set.index(args.path1)],
+        results[args_set.index(args.path2)],
+        fs_struct_type
+        )

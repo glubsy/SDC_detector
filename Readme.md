@@ -25,7 +25,12 @@ crc32c (optional)
 yaml
 pprint
 
+## License
+
+GPLv3
+
 ## TODO
 
 * Test suite
 * Diff results without deepdiff (by walking the trees and comparing ourselves)
+* Do more than 2 comparisons at a time (ie. compare >2 file systems at once)

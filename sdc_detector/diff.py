@@ -4,7 +4,10 @@ import pprint
 
 # import dictdiffer # smaller, faster but cannot traverse results
 import deepdiff
-from .tree import DirTreeGeneratorPureDict, split_ddiff_path
+from .tree import (DirTreeGeneratorPureDict,
+                   DirTreeGeneratorMixed,
+                   DirTreeGeneratorList,
+                   split_ddiff_path)
 
 # @timer
 def ddiff_compare(tree1, tree2, tree_class):
@@ -15,7 +18,7 @@ def ddiff_compare(tree1, tree2, tree_class):
         logging.critical("Types are different! Cannot diff.")
         return
     if type1 == "dict":
-        # We assume this is mixed dict here.
+        # FIXME We assume this is mixed dict here.
         ignore_order = True
     else:
         ignore_order = False
@@ -34,26 +37,33 @@ def ddiff_compare(tree1, tree2, tree_class):
         cutoff_distance_for_pairs=1.0,
         cutoff_intersection_for_pairs=1.0
         )
-    pprint.pprint(ddiff, indent=2)
+    if not ddiff:
+        print("No difference found. All is good!")
+        return
 
+    pprint.pprint(ddiff, indent=2)
     pprint.pprint(ddiff.to_dict(view_override='text'), indent=2)
     logger.debug(ddiff.to_dict(view_override='text'))
-    logger.debug(f"PRETTY:\n{ddiff.pretty()}")
+    logger.debug(f"ddiff.pretty():\n{ddiff.pretty()}")
 
     set_changed = ddiff.get('values_changed')
     if set_changed is not None:
         changed_dict = parse_ddiff_changed(set_changed, tree_class, tree1)
         for k, v in changed_dict.items():
             sentence = ", ".join(v)
-            logger.warning(f"{k} {sentence}")
+            print(f"{k} {sentence}")
 
     set_added = ddiff.get('iterable_item_added')
+    if not set_added:
+        set_added = ddiff.get('dictionary_item_added')
     if set_added is not None:
         list_added = list(set_added)
         for item in list_added:
             logger.debug(f"added path: {item.path()} -> t1: {item.t1} -> t2: {item.t2}")
 
     set_removed = ddiff.get('iterable_item_removed')
+    if not set_removed:
+        set_removed = ddiff.get('dictionary_item_removed')
     if set_removed is not None:
         list_removed = list(set_removed)
         for item in list_removed:

@@ -23,7 +23,7 @@ def timer(func):
         value = func(*args)
         end = time.perf_counter_ns()
         total = end - start
-        logger.debug(f"TIMER: {func.__name__!r} took {total} ns.")
+        logger.debug(f"TIMER: {func.__name__!r}{args[0]} took {total} ns.")
         return value
     return wrapper_timer
 
