@@ -8,7 +8,7 @@ The advantage over `rsync -c` is saving the results to a yaml file for further c
 ## Usage
 
 * Generate text result file:
-`python __main__.py --output_dir ./ /path/to/directory`
+`python __main__.py -c "xxhash" --output_dir ./ /path/to/directory`
 
 * Compare two text result files:
 `python __main__.py result1.txt result2.txt`
@@ -21,6 +21,7 @@ NOTES:
 
 deepdiff
 hashlib
+xxhash (optional, recommended)
 crc32c (optional)
 yaml
 pprint

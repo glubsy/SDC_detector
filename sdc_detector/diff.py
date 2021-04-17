@@ -1,5 +1,5 @@
 import logging
-logger = logging.getLogger("sdc_detector")
+logger = logging.getLogger()
 import pprint
 
 # import dictdiffer # smaller, faster but cannot traverse results

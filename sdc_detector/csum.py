@@ -1,5 +1,5 @@
 import logging
-logger = logging.getLogger("sdc_detector")
+logger = logging.getLogger()
 import functools
 import time
 
@@ -13,7 +13,15 @@ except Exception as e:
     # Fallbacks
     # from zlib import crc32
     from binascii import crc32 # seems a tiny bit faster than zlib?
-BUF_SIZE = 65536  # arbitrary value of 64kb chunks!
+
+HAS_XXHASH = False
+try:
+    from xxhash import xxh64, xxh32
+    HAS_XXHASH = True
+except Exception as e:
+    logger.debug(f"Failed to load xxhash module. {e}")
+
+BUF_SIZE = 65536  # arbitrary value of 64kb chunks
 
 
 def timer(func):
@@ -23,13 +31,22 @@ def timer(func):
         value = func(*args)
         end = time.perf_counter_ns()
         total = end - start
-        logger.debug(f"TIMER: {func.__name__!r}{args[0]} took {total} ns.")
+        logger.debug(f"TIMER: {func.__name__!r}{args} took {total} ns.")
         return value
     return wrapper_timer
 
+
+def get_csum(filename, hashtype):
+    if hashtype == 'crc32':
+        return get_crc32(filename)
+    if hashtype == 'xxhash':
+        return get_xxhash(filename)
+    else:
+        return get_hash(filename, hashtype)
+
 @timer
 def get_hash(filename, hashtype):
-    """Return sha1, sha256 or md5 as a string of hexadecimal hash."""
+    """Return hashes available from hashlib as a string of hexadecimal hash."""
     _hash = new(hashtype, usedforsecurity=False)
     with open(filename, 'rb') as fp:
         while True:
@@ -41,7 +58,19 @@ def get_hash(filename, hashtype):
     return hash_hex
 
 @timer
-def get_crc32(filename, notused):
+def get_xxhash(filename):
+    _hash = xxh64()
+    with open(filename, 'rb') as fp:
+        while True:
+            data = fp.read(BUF_SIZE)
+            if not data:
+                break
+            _hash.update(data)
+    hash_hex = _hash.hexdigest()
+    return hash_hex
+
+@timer
+def get_crc32(filename):
     """Return string of crc32 csum."""
     #binascii, zlib and crc32c share a similar interface.
     with open(filename,'rb') as fp:

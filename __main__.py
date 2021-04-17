@@ -19,7 +19,7 @@ import os
 import argparse
 import logging
 import concurrent.futures
-logger = logging.getLogger("sdc_detector")
+logger = logging.getLogger()
 from pathlib import Path
 
 from yaml import load, dump, parse
@@ -28,11 +28,6 @@ try:
 except ImportError:
     from yaml import Loader, Dumper
 import pprint
-
-from sdc_detector.tree import DirTreeGeneratorPureDict, DirTreeGeneratorList,\
-    DirTreeGeneratorMixed, load_yaml
-from sdc_detector.diff import ddiff_compare
-
 
 # Obsolete
 def check_empty_items(base_tree):
@@ -97,8 +92,8 @@ if __name__ == "__main__":
             help="Output directory where to write results.")
     parser.add_argument('-n', '--no_output', action='store_true',\
             help="Do not write results to yaml or text files.")
-    # TODO add xxhash, blake2b?
-    hashes = ('sha1', 'sha256', 'crc32', 'md5')
+    # TODO add blake2s?
+    hashes = ('sha1', 'sha256', 'crc32', 'md5', 'blake2b', 'xxhash')
     parser.add_argument('-c', action='store', dest='csum_name', default="sha1",
         choices=hashes,
         help='hash or crc algorithm to use for integrity checking.',
@@ -120,6 +115,16 @@ if __name__ == "__main__":
     conhandler = logging.StreamHandler()
     conhandler.setLevel(log_level)
     logger.addHandler(conhandler)
+
+    from sdc_detector.tree import DirTreeGeneratorPureDict, DirTreeGeneratorList,\
+        DirTreeGeneratorMixed, load_yaml
+    from sdc_detector.diff import ddiff_compare
+    from sdc_detector.csum import HAS_XXHASH
+
+    if args.csum_name == 'xxhash' and not HAS_XXHASH:
+        args.csum_name = 'sha1'
+        logger.warning(f"'xxhash' module not found. \
+Defaulting back to {args.csum_name}.")
 
     if args.impl == 'mixed_dict':
         fs_struct_type = DirTreeGeneratorMixed

@@ -1,7 +1,7 @@
 import os
 import re
 import logging
-logger = logging.getLogger("sdc_detector")
+logger = logging.getLogger()
 from datetime import datetime
 
 from yaml import load, dump, parse
@@ -17,7 +17,7 @@ from .csum import *
 class DirTreeGenerator:
     def __init__(self, path, args):
         self._csum_name = args.csum_name
-        self._csum_func = get_crc32 if args.csum_name == "crc32" else get_hash
+        # self._csum_func = get_csum
         self._path = path # pathlib.Path
         self._output_dir = args.output_dir
 
@@ -94,7 +94,7 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
         if sz == 0:
             logger.warning(f"File {fpath} is {sz} length bytes!")
         return { 'n': filename,
-                'cs': self._csum_func(fpath, self._csum_name),
+                'cs': get_csum(fpath, self._csum_name),
                 'sz': sz
         }
         # return { filename: {
@@ -165,7 +165,7 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
         if sz == 0:
             logger.warning(f"File {fpath} is {sz} length bytes!")
         return {
-                'cs': self._csum_func(fpath, self._csum_name),
+                'cs': get_csum(fpath, self._csum_name),
                 'sz': os.stat(fpath).st_size
         }
 
