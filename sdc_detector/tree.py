@@ -1,17 +1,15 @@
 import os
-import re
 import logging
 logger = logging.getLogger()
 from datetime import datetime
 
 from yaml import load, dump, parse
 try:
-    from yaml import CLoader as Loader, CDumper as Dumper
+    from yaml import CDumper as Dumper
 except ImportError:
-    from yaml import Loader, Dumper
-import pprint
+    from yaml import Dumper
 
-from .csum import * 
+from .csum import *
 
 
 class DirTreeGenerator:
@@ -22,7 +20,11 @@ class DirTreeGenerator:
         self._output_dir = args.output_dir
 
     def generate(self, no_output=False):
+        # FIXME this function might not need to be in this class,
+        # perhaps standalone in __main__, since all we do is a "tee" on the
+        # otherwise returned dir_content.
         dir_content = self._generate()
+
         if not no_output:
             filename = os.path.basename(self._path)\
                     + "_hashes_"\
@@ -37,24 +39,27 @@ class DirTreeGenerator:
         return dir_content
 
     # Virtual
-    def _recursive_stat(self, base_path):
-        raise NotImplementedError()
     def _generate(self):
         raise NotImplementedError()
+    def _recursive_stat(self, base_path):
+        raise NotImplementedError()
     def _get_file_info(self, root, filename):
-        raise NotImplementedError()
-    @staticmethod
-    def get_path_from_str(string):
-        raise NotImplementedError()
-    @staticmethod
-    def get_leaf_from_path(string):
         raise NotImplementedError()
 
 
 class DirTreeGeneratorMixed(DirTreeGenerator):
-    """Default implementation uses Dicts, and Lists for folder content."""
+    """Default implementation uses Dicts, and Lists for directory content."""
     def __init__(self, path, args):
         super().__init__(path, args)
+
+    def _generate(self):
+        """Return dictionary representing dir tree structure."""
+        dir_content = self._recursive_stat(self._path)
+        # Rename the root node to be similar across comparisons
+        # dir_content['root'] = dir_content.pop(base_path.name)
+        dir_content['root'] = dir_content[self._path.name]
+        del dir_content[self._path.name]
+        return dir_content
 
     def _recursive_stat(self, base_path):
         directory = {}
@@ -79,15 +84,6 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
                     directory[dn].append(self._get_file_info(root, f))
             return directory
 
-    def _generate(self):
-        """Return dictionary representing dir tree structure."""
-        dir_content = self._recursive_stat(self._path)
-        # Rename the root node to be similar across comparisons
-        # dir_content['root'] = dir_content.pop(base_path.name)
-        dir_content['root'] = dir_content[self._path.name]
-        del dir_content[self._path.name]
-        return dir_content
-
     def _get_file_info(self, root, filename): # dict
         fpath = os.path.join(root, filename)
         sz = os.stat(fpath).st_size
@@ -103,32 +99,19 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
         #     }
         # }
 
-    @staticmethod
-    def get_path_from_str(string):
-        path_items = split_ddiff_path(string)
-        path = ""
-        # Ignore first ('root') and last ('n', 'sz', 'cs')
-        for i in range(1, len(path_items) -1):
-            # ignore the list indices in the string
-            if i % 2 == 0:
-                path = os.path.join(path, path_items[i])
-        return path + os.sep
-
-    @staticmethod
-    def get_leaf_from_path(string):
-        """
-        str: "root['root'][1]['CGI'][2]['crc']" -> str: "root['root'][1]['CGI'][2]"
-        """
-        idx = string.rfind("][")
-        s = string[:idx] + "]"
-        logger.debug(f"get_leaf_from_path(): {s}")
-        return s
-
 
 class DirTreeGeneratorPureDict(DirTreeGenerator):
     """Default implementation uses nested Dicts only."""
     def __init__(self, path, args):
         super().__init__(path, args)
+
+    def _generate(self):
+        """Return dictionary representing dir tree structure."""
+        dir_content = self._recursive_stat(self._path)
+        # Add back a root node -> this might not be necessary
+        # dir_contents = {}
+        # dir_contents['root'] = dir_content
+        return dir_content
 
     def _recursive_stat(self, base_path):
         directory = {}
@@ -151,14 +134,6 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
                     directory[f] = self._get_file_info(root, f)
             return directory
 
-    def _generate(self):
-        """Return dictionary representing dir tree structure."""
-        dir_content = self._recursive_stat(self._path)
-        # Add back a root node -> this might not be necessary
-        # dir_contents = {}
-        # dir_contents['root'] = dir_content
-        return dir_content
-
     def _get_file_info(self, root, filename): # dict
         fpath = os.path.join(root, filename)
         sz = os.stat(fpath).st_size
@@ -169,30 +144,18 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
                 'sz': os.stat(fpath).st_size
         }
 
-    @staticmethod
-    def get_path_from_str(string):
-        path_items = split_ddiff_path(string)
-        path = ""
-        # Ignore last ('sz', 'cs')
-        for i in range(0, len(path_items) -1):
-            path = os.path.join(path, path_items[i])
-        return path
 
-    @staticmethod
-    def get_leaf_from_path(string):
-        """
-        str: "root['root']['CGI']['item']['crc']" -> str: "root['root']['CGI']['item']"
-        """
-        idx = string.rfind("][")
-        s = string[:idx] + "]"
-        logger.debug(f"get_leaf_from_path(): {s}")
-        return s
-
-
-class DirTreeGeneratorList(DirTreeGeneratorMixed):
+class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
     """Implementation around Lists."""
     def __init__(self, path, args):
         super().__init__(path, args)
+
+    def _generate(self):
+        """Returs List of Lists representing dir tree structure."""
+        dir_content = self._recursive_stat(self._path)
+        # Rename the root node since it will be different accross mounts
+        dir_content[0] = 'root'
+        return dir_content
 
     def _recursive_stat(self, base_path):
         directory = []
@@ -215,28 +178,6 @@ class DirTreeGeneratorList(DirTreeGeneratorMixed):
                 directory.append([self._get_file_info(root, f) for f in files])
             return directory
 
-    def _generate(self):
-        """Returs List of Lists representing dir tree structure."""
-        dir_content = self._recursive_stat(self._path)
-        # Rename the root node since it will be different accross mounts
-        dir_content[0] = 'root'
-        return dir_content
-
     def _get_file_info(self, root, filename):
         fpath = os.path.join(root, filename)
         return [filename, get_crc32(fpath), os.stat(fpath).st_size]
-
-
-def split_ddiff_path(string):
-    """
-    str: root['root'][1]['CGI'][2]['crc'] -> list: ["root", "CGI", "crc]
-    """
-    # path_items = [tuple(re.search('\[(.+)\]', key).group(1).split('][')) for key in diff.keys()]
-    res = [s.strip("\'") for s in re.search('\[(.+)\]', string).group(1).split('][')]
-    logger.debug(f"split_ddif_path(): {res}")
-    return res
-
-# @timer
-def load_yaml(fpath):
-    with open(fpath, 'r') as fp:
-        return load(fp, Loader=Loader)

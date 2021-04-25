@@ -1,20 +1,4 @@
 #!/bin/env python3
-
-# 1) Get md5 or crc32 or sha1 of each file in a dir
-# 2) store results in a data structure (dict?)
-# 	- filename
-#	- hash
-#	- file sizes on disk
-#	- mtime
-# 2) serialize the result
-# 3) do the same for another dir
-# 4) compare the results by iteration
-#
-# TODO: if possible
-# * write to file in chunks (buffered, not possible
-# with serialization of python objects into json or yaml sadly)
-# * don't keep everything in memory, use iterators / generators
-
 import os
 import argparse
 import logging
@@ -81,6 +65,11 @@ def breadcrumb(dict_or_list, value):
             if p and p.get("n") is not None:
                 return p.get("n")
 
+# @timer
+def load_yaml(fpath):
+    with open(fpath, 'r') as fp:
+        return load(fp, Loader=Loader)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -103,7 +92,7 @@ if __name__ == "__main__":
         choices=levels,
         help='Log level. [DEBUG, INFO, WARNING, ERROR, CRITICAL]')
     implementations = ('pure_dict', 'mixed_dict', 'pure_list')
-    parser.add_argument('--impl', action='store', default='pure_dict',
+    parser.add_argument('--tree_type', action='store', default='pure_dict',
         choices=implementations,
         help=f'Tree representation implementation to use. Default "pure_dict".')
     args = parser.parse_args()
@@ -116,9 +105,10 @@ if __name__ == "__main__":
     conhandler.setLevel(log_level)
     logger.addHandler(conhandler)
 
-    from sdc_detector.tree import DirTreeGeneratorPureDict, DirTreeGeneratorList,\
-        DirTreeGeneratorMixed, load_yaml
-    from sdc_detector.diff import ddiff_compare
+    from sdc_detector.tree import DirTreeGeneratorMixed, \
+        DirTreeGeneratorPureDict, \
+        DirTreeGeneratorPureList
+    from sdc_detector.diff import get_comparison
     from sdc_detector.csum import HAS_XXHASH
 
     if args.csum_name == 'xxhash' and not HAS_XXHASH:
@@ -126,14 +116,19 @@ if __name__ == "__main__":
         logger.warning(f"'xxhash' module not found. \
 Defaulting back to {args.csum_name}.")
 
-    if args.impl == 'mixed_dict':
+    if args.tree_type == 'mixed_dict':
         fs_struct_type = DirTreeGeneratorMixed
-    elif args.impl == 'pure_list':
-        fs_struct_type = DirTreeGeneratorList
+    elif args.tree_type == 'pure_list':
+        fs_struct_type = DirTreeGeneratorPureList
     else:
         fs_struct_type = DirTreeGeneratorPureDict
     # TODO write tree type to yaml to avoid comparing different types of trees?
-    # for now we assume the same type was generated across scans.
+    # for now we assume the same underlying type was generated across scans.
+
+    # TODO
+    # * write to file in chunks (buffered, sadly not possible due to the need to
+    # serialize python objects into json or yaml)
+    # * don't keep everything in memory, use iterators / generators
 
     if not args.path2:
         gen = fs_struct_type(Path(args.path1), args)
@@ -167,9 +162,8 @@ Defaulting back to {args.csum_name}.")
 
     # TODO extra option: for each file listed in yaml, compare with a target
     # dir (partial backups) only those files.
-    ddiff_compare(
-        # HACK always place first argument passed to the left hand side
+    # HACK always place first argument passed to the left hand side
+    get_comparison(fs_struct_type).compare(
         results[args_set.index(args.path1)],
         results[args_set.index(args.path2)],
-        fs_struct_type
         )

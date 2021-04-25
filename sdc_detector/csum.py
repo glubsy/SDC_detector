@@ -16,6 +16,7 @@ except Exception as e:
 
 HAS_XXHASH = False
 try:
+    # TODO allow user choice of either, or according to platform support?
     from xxhash import xxh64, xxh32
     HAS_XXHASH = True
 except Exception as e:
@@ -54,8 +55,7 @@ def get_hash(filename, hashtype):
             if not data:
                 break
             _hash.update(data)
-    hash_hex = _hash.hexdigest()
-    return hash_hex
+    return _hash.hexdigest()
 
 @timer
 def get_xxhash(filename):
@@ -66,8 +66,7 @@ def get_xxhash(filename):
             if not data:
                 break
             _hash.update(data)
-    hash_hex = _hash.hexdigest()
-    return hash_hex
+    return _hash.hexdigest()
 
 @timer
 def get_crc32(filename):
