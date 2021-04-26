@@ -27,23 +27,15 @@ BUF_SIZE = 65536  # arbitrary value of 64kb chunks
 
 def timer(func):
     @functools.wraps(func)
-    def wrapper_timer(*args):
+    def wrapper_timer(*args, **kwargs):
         start = time.perf_counter_ns()
-        value = func(*args)
+        value = func(*args, **kwargs)
         end = time.perf_counter_ns()
         total = end - start
-        logger.debug(f"TIMER: {func.__name__!r}{args} took {total} ns.")
+        logger.debug(f"TIMER: {func.__name__!r}{args}"\
+                     f"{kwargs} took {total} ns.")
         return value
     return wrapper_timer
-
-
-def get_csum(filename, hashtype):
-    if hashtype == 'crc32':
-        return get_crc32(filename)
-    if hashtype == 'xxhash':
-        return get_xxhash(filename)
-    else:
-        return get_hash(filename, hashtype)
 
 @timer
 def get_hash(filename, hashtype):

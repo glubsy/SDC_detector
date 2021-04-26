@@ -1,5 +1,6 @@
 import os
 import logging
+from functools import partial
 logger = logging.getLogger()
 from datetime import datetime
 
@@ -13,11 +14,18 @@ from .csum import *
 
 
 class DirTreeGenerator:
-    def __init__(self, path, args):
-        self._csum_name = args.csum_name
-        # self._csum_func = get_csum
+    def __init__(self, path, _args):
+        self._csum_name = _args.csum_name
+        # FIXME this could be in a nested class maybe
+        if self._csum_name == 'crc32':
+            self._get_csum = get_crc32
+        elif self._csum_name == 'xxhash':
+            self._get_csum = get_xxhash
+        else:
+            self._get_csum = partial(get_hash, hashtype=self._csum_name)
+
         self._path = path # pathlib.Path
-        self._output_dir = args.output_dir
+        self._output_dir = _args.output_dir
 
     def generate(self, no_output=False):
         # FIXME this function might not need to be in this class,
@@ -32,7 +40,7 @@ class DirTreeGenerator:
             fpath = self._output_dir\
                     + os.sep\
                     + filename\
-                    + ".txt"
+                    + ".yaml"
             with open(fpath, 'w') as op:
                 dump(dir_content, stream=op, Dumper=Dumper)
             print(f"Wrote results to YAML file: {fpath}.")
@@ -90,7 +98,7 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
         if sz == 0:
             logger.warning(f"File {fpath} is {sz} length bytes!")
         return { 'n': filename,
-                'cs': get_csum(fpath, self._csum_name),
+                'cs': self._get_csum(fpath),
                 'sz': sz
         }
         # return { filename: {
@@ -140,7 +148,7 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
         if sz == 0:
             logger.warning(f"File {fpath} is {sz} length bytes!")
         return {
-                'cs': get_csum(fpath, self._csum_name),
+                'cs': self._get_csum(fpath),
                 'sz': os.stat(fpath).st_size
         }
 
@@ -151,7 +159,7 @@ class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
         super().__init__(path, args)
 
     def _generate(self):
-        """Returs List of Lists representing dir tree structure."""
+        """Returns List of Lists representing dir tree structure."""
         dir_content = self._recursive_stat(self._path)
         # Rename the root node since it will be different accross mounts
         dir_content[0] = 'root'
@@ -180,4 +188,7 @@ class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
 
     def _get_file_info(self, root, filename):
         fpath = os.path.join(root, filename)
-        return [filename, get_crc32(fpath), os.stat(fpath).st_size]
+        sz = os.stat(fpath).st_size
+        if sz == 0:
+            logger.warning(f"File {fpath} is {sz} length bytes!")
+        return [filename, self._get_csum(fpath), sz]

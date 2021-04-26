@@ -9,6 +9,7 @@ import deepdiff
 from .tree import (DirTreeGeneratorPureDict,
                    DirTreeGeneratorMixed,
                    DirTreeGeneratorPureList)
+# TODO "manual" implementation without deepdiff
 
 # TODO error on:
 # hash is '0'
@@ -26,6 +27,9 @@ def get_comparison(tree_struct):
 
 
 class TreeComparison:
+    # Can be tied to class, as it is a singleton.
+    results = {}
+
     def compare(self, tree1, tree2):
         type1 = type(tree1)
         type2 = type(tree2)
@@ -45,17 +49,11 @@ class TreeComparison:
             print("No difference found. All is good!")
             return
 
-        pprint.pprint(ddiff, indent=2)
-        pprint.pprint(ddiff.to_dict(view_override='text'), indent=2)
+        if logger.isEnabledFor(logging.DEBUG):
+            pprint.pprint(ddiff, indent=2)
+            pprint.pprint(ddiff.to_dict(view_override='text'), indent=2)
         logger.debug(ddiff.to_dict(view_override='text'))
         logger.debug(f"ddiff.pretty():\n{ddiff.pretty()}")
-
-        set_changed = ddiff.get('values_changed')
-        if set_changed is not None:
-            changed_dict = self.parse_ddiff_changed(set_changed, tree1)
-            for k, v in changed_dict.items():
-                sentence = ", ".join(v)
-                print(f"{k} {sentence}")
 
         set_added = ddiff.get('iterable_item_added')\
                     or ddiff.get('dictionary_item_added')
@@ -72,7 +70,28 @@ class TreeComparison:
             for item in list_removed:
                 logger.debug(f"removed path: {item.path()}"\
                             f"-> t1: {item.t1} -> t2: {item.t2}")
-    
+
+        set_changed = ddiff.get('values_changed')
+        if set_changed is not None:
+            changed_dict = self.parse_ddiff_changed(set_changed, tree1)
+            for k, v in changed_dict.items():
+                sentence = ", ".join(v)
+                print(f"{k} {sentence}")
+
+    @classmethod
+    def add_to_result(cls, parsed_path, change_type, change):
+        if change_type == "n":
+            _type = "Filename"
+        elif change_type == "cs":
+            _type = "CSUM"
+        elif change_type == "sz":
+            _type = "Size"
+        else:
+            return
+        logger.debug(f"{_type} changed for {parsed_path} from {change.t1} to {change.t2}")
+        append_to_list(cls.results, parsed_path, \
+                           f"{_type} changed from {change.t1} to {change.t2}")
+
     @classmethod
     def parse_ddiff_changed(cls, set_changed, base_tree):
         raise NotImplementedError
@@ -98,7 +117,6 @@ class ComparisonMixed(TreeComparison):
     def parse_ddiff_changed(cls, set_changed, base_tree):
         list_changed = list(set_changed)  # list of DiffLevel
         logger.debug(f"list_changed: {list_changed}")
-        results = {}
 
         for change in list_changed:
             leaf = deepdiff.extract(base_tree, cls.get_leaf_from_path(change.path()))
@@ -110,19 +128,8 @@ class ComparisonMixed(TreeComparison):
             logger.debug(f"parsed_path: {parsed_path}")
 
             prop = split_ddiff_path(change.path())[-1]
-            if prop == "cs":
-                logger.debug(f"CSUM value changed for {fname} from {change.t1} to {change.t2}")
-                append_to_list(results, parsed_path, \
-                              f"changed csum from {change.t1} to {change.t2}")
-            elif prop == "sz":
-                logger.debug(f"Size changed for {fname} from {change.t1} to {change.t2}")
-                append_to_list(results, parsed_path, \
-                              f"size changed from {change.t1} to {change.t2}")
-            elif prop == "n":
-                logger.debug(f"Filename changed for {fname} from {change.t1} to {change.t2}")
-                append_to_list(results, parsed_path, \
-                              f"filename changed from {change.t1} to {change.t2}")
-        return results
+            cls.add_to_result(parsed_path, prop, change)
+        return cls.results
 
     @classmethod
     def _get_path_from_str(cls, string):
@@ -166,25 +173,17 @@ class ComparisonPureDict(TreeComparison):
     def parse_ddiff_changed(cls, set_changed, base_tree):
         list_changed = list(set_changed)  # list of DiffLevel
         logger.debug(f"list_changed: {list_changed}")
-        results = {}
 
         for change in list_changed:
-            parsed_path = self._get_path_from_str(change.path())
+            parsed_path = cls._get_path_from_str(change.path())
             logger.debug(f"---\n_get_path_from_str(): {parsed_path}")
             fname = parsed_path
             logger.debug(f"filename: {fname}")
             logger.debug(f"parsed_path: {parsed_path}")
 
             prop = split_ddiff_path(change.path())[-1]
-            if prop == "cs":
-                logger.debug(f"CSUM value changed for {fname} from {change.t1} to {change.t2}")
-                append_to_list(results, parsed_path, \
-                               f"changed csum from {change.t1} to {change.t2}")
-            elif prop == "sz":
-                logger.debug(f"Size changed for {fname} from {change.t1} to {change.t2}")
-                append_to_list(results, parsed_path, \
-                               f"size changed from {change.t1} to {change.t2}")
-        return results
+            cls.add_to_result(parsed_path, prop, change)
+        return cls.results
 
     @classmethod
     def _get_path_from_str(cls, string):
@@ -232,7 +231,6 @@ class ComparisonPureList(TreeComparison):
     def parse_ddiff_changed(cls, set_changed, base_tree):
         list_changed = list(set_changed)  # list of DiffLevel
         logger.debug(f"list_changed: {list_changed}")
-        results = {}
 
         for change in list_changed:
             path_list = split_ddiff_path(change.path())
@@ -247,27 +245,13 @@ class ComparisonPureList(TreeComparison):
 
             prop = path_list[-1]
             if prop == "1":
-                cls.add_result(results, parsed_path, "cs", fname, change)
+                cls.add_to_result(parsed_path, "cs", change)
             elif prop == "2":
-                cls.add_result(results, parsed_path, "sz", fname, change)
+                cls.add_to_result(parsed_path, "sz", change)
             elif prop == "0":
-                cls.add_result(results, parsed_path, "n", fname, change)
-        return results
+                cls.add_to_result(parsed_path, "n", change)
+        return cls.results
 
-    @classmethod
-    def add_result(cls, results, parsed_path, change_type, fname, change):
-        if change_type == "n":
-            logger.debug(f"Filename changed for {fname} from {change.t1} to {change.t2}")
-            append_to_list(results, parsed_path, \
-                           f"filename changed from {change.t1} to {change.t2}")
-        elif change_type == "cs":
-            logger.debug(f"CSUM value changed for {fname} from {change.t1} to {change.t2}")
-            append_to_list(results, parsed_path, \
-                           f"changed csum from {change.t1} to {change.t2}")
-        elif change_type == "sz":
-            logger.debug(f"Size changed for {fname} from {change.t1} to {change.t2}")
-            append_to_list(results, parsed_path, \
-                           f"size changed from {change.t1} to {change.t2}")
 
     @classmethod
     def _get_path_from_str(cls, base_tree, path_list):
@@ -275,6 +259,8 @@ class ComparisonPureList(TreeComparison):
         Get the name of each parent folder in a row and recreate the path.
         """
         def recurse(t, idxs, l=[]):
+            """Rebuild the path from names pointed by
+               each index listed in idxs."""
             if not idxs:
                 return
             # get the element pointed by the current index
@@ -312,7 +298,10 @@ def split_ddiff_path(string):
     logger.debug(f"split_ddif_path(): {res}")
     return res
 
-def append_to_list(_d, _k, _s):
-    _l = _d.get(_k, [])
-    _l.append(_s)
-    _d[_k] = _l
+def append_to_list(_dict, _key, _string):
+    """Append string to _list pointed by _key of _dict,
+       or create a new list at key if doesn't exist.
+    """
+    _list = _dict.get(_key, [])
+    _list.append(_string)
+    _dict[_key] = _list
