@@ -20,6 +20,7 @@ However, this being a static file, it has to be generated again if the file syst
 NOTE:
 
 * Files are considered missing (added or removed) if their exact name is not found in the second result set.
+* the "mixed_dict" implementation works the best, followed by "pure_dict. "pure_list" seems to work, but needs "ignore_order=True" at least.
 
 # Dependencies
 

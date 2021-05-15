@@ -221,7 +221,7 @@ class ComparisonPureList(TreeComparison):
             tree1, tree2,
             verbose_level=2,
             view='tree',
-            ignore_order=False, # List implementation specific
+            ignore_order=True, # List implementation specific, True seems best
             ignore_string_type_changes=True,
             cutoff_distance_for_pairs=1.0,
             cutoff_intersection_for_pairs=1.0
