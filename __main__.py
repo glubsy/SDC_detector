@@ -108,6 +108,7 @@ if __name__ == "__main__":
     from sdc_detector.tree import DirTreeGeneratorMixed, \
         DirTreeGeneratorPureDict, \
         DirTreeGeneratorPureList
+
     from sdc_detector.diff import get_comparison
     from sdc_detector.csum import HAS_XXHASH
 
@@ -122,6 +123,7 @@ Defaulting back to {args.csum_name}.")
         fs_struct_type = DirTreeGeneratorPureList
     else:
         fs_struct_type = DirTreeGeneratorPureDict
+
     # TODO write tree type to yaml to avoid comparing different types of trees?
     # for now we assume the same underlying type was generated across scans.
 

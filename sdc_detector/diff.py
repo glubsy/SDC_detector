@@ -9,13 +9,7 @@ import deepdiff
 from .tree import (DirTreeGeneratorPureDict,
                    DirTreeGeneratorMixed,
                    DirTreeGeneratorPureList)
-# TODO "manual" implementation without deepdiff
 
-# TODO error on:
-# hash is '0'
-# size is 0
-# name is different? -> will not work!
-# number of items is different / item is missing
 
 def get_comparison(tree_struct):
     if tree_struct == DirTreeGeneratorPureDict:
@@ -38,6 +32,11 @@ class TreeComparison:
             return None
         return self._compare(tree1, tree2)
 
+    def _compare(self, tree1, tree2):
+        raise NotImplementedError
+
+
+class DeepDiffComparison(TreeComparison):
    # @ŧimer
     def _compare(self, tree1, tree2):
         """
@@ -97,7 +96,7 @@ class TreeComparison:
         raise NotImplementedError
 
 
-class ComparisonMixed(TreeComparison):
+class ComparisonMixed(DeepDiffComparison):
     """
     This class depends on tree struct implementation based on both Dicts
     and Lists: Lists for files in each directory content.
@@ -154,7 +153,7 @@ class ComparisonMixed(TreeComparison):
         return s
 
 
-class ComparisonPureDict(TreeComparison):
+class ComparisonPureDict(DeepDiffComparison):
     """
     This class depends on tree struct implementation based purely on Dicts.
     """
@@ -205,7 +204,7 @@ class ComparisonPureDict(TreeComparison):
         return s
 
 
-class ComparisonPureList(TreeComparison):
+class ComparisonPureList(DeepDiffComparison):
     """
     This class depends on the tree struct implementation based purely on Lists.
     """
