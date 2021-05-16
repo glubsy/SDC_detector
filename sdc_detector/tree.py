@@ -12,10 +12,10 @@ except ImportError:
 
 from .csum import *
 
-
 class DirTreeGenerator:
-    def __init__(self, path, _args):
+    def __init__(self, path, _args, printer):
         self._csum_name = _args.csum_name
+        self.printer = printer
         # FIXME this could be in a nested class maybe
         if self._csum_name == 'crc32':
             self._get_csum = get_crc32
@@ -30,7 +30,7 @@ class DirTreeGenerator:
     def generate(self, no_output=False):
         # FIXME this function might not need to be in this class,
         # perhaps standalone in __main__, since all we do is a "tee" on the
-        # otherwise returned dir_content.
+        # dir_content that will be returned regardless.
         dir_content = self._generate()
 
         if not no_output:
@@ -54,11 +54,12 @@ class DirTreeGenerator:
     def _get_file_info(self, root, filename):
         raise NotImplementedError()
 
+#TODO we could walk the trees manually with a for k1, k2 in d1.keys(), d2.keys():
 
 class DirTreeGeneratorMixed(DirTreeGenerator):
     """Default implementation uses Dicts, and Lists for directory content."""
-    def __init__(self, path, args):
-        super().__init__(path, args)
+    def __init__(self, path, args, printer):
+        super().__init__(path, args, printer)
 
     def _generate(self):
         """Return dictionary representing dir tree structure."""
@@ -79,7 +80,9 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
             directory[dn] = []
             if dirs:
                 for d in dirs:
-                    logger.info(f"Scanning {os.path.join(base_path, d)}...")
+                    dirname = os.path.join(base_path, d)
+                    logger.debug(f"Scanning {dirname}...")
+                    self.printer.update(id(self), dirname)
                     directory[dn].append(self._recursive_stat(
                         base_path=os.path.join(base_path, d)
                         )
@@ -96,7 +99,7 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
         fpath = os.path.join(root, filename)
         sz = os.stat(fpath).st_size
         if sz == 0:
-            logger.warning(f"File {fpath} is {sz} length bytes!")
+            logger.warning(f"\nFile {fpath} is {sz} length bytes!")
         return { 'n': filename,
                 'cs': self._get_csum(fpath),
                 'sz': sz
@@ -110,8 +113,8 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
 
 class DirTreeGeneratorPureDict(DirTreeGenerator):
     """Default implementation uses nested Dicts only."""
-    def __init__(self, path, args):
-        super().__init__(path, args)
+    def __init__(self, path, args, printer):
+        super().__init__(path, args, printer)
 
     def _generate(self):
         """Return dictionary representing dir tree structure."""
@@ -131,7 +134,9 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
             # directory[dn] = {}
             if dirs:
                 for d in dirs:
-                    logger.info(f"Scanning {os.path.join(base_path, d)}...")
+                    dirname = os.path.join(base_path, d)
+                    logger.debug(f"Scanning {dirname}...")
+                    self.printer.update(id(self), dirname)
                     directory[d] = self._recursive_stat(
                         base_path=os.path.join(base_path, d)
                     )
@@ -146,7 +151,7 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
         fpath = os.path.join(root, filename)
         sz = os.stat(fpath).st_size
         if sz == 0:
-            logger.warning(f"File {fpath} is {sz} length bytes!")
+            logger.warning(f"\nFile {fpath} is {sz} length bytes!")
         return {
                 'cs': self._get_csum(fpath),
                 'sz': os.stat(fpath).st_size
@@ -155,8 +160,8 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
 
 class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
     """Implementation around Lists."""
-    def __init__(self, path, args):
-        super().__init__(path, args)
+    def __init__(self, path, args, printer):
+        super().__init__(path, args, printer)
 
     def _generate(self):
         """Returns List of Lists representing dir tree structure."""
@@ -175,7 +180,9 @@ class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
             directory.append(dn)
             if dirs:
                 for d in dirs:
-                    logger.info(f"Scanning {os.path.join(base_path, d)}...")
+                    dirname = os.path.join(base_path, d)
+                    logger.debug(f"Scanning {dirname}...")
+                    self.printer.update(id(self), dirname)
                     directory.append(
                         self._recursive_stat(base_path=os.path.join(base_path, d)
                         )
@@ -190,5 +197,5 @@ class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
         fpath = os.path.join(root, filename)
         sz = os.stat(fpath).st_size
         if sz == 0:
-            logger.warning(f"File {fpath} is {sz} length bytes!")
+            logger.warning(f"\nFile {fpath} is {sz} length bytes!")
         return [filename, self._get_csum(fpath), sz]

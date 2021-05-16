@@ -1,5 +1,6 @@
 #!/bin/env python3
 import os
+import sys
 import argparse
 import logging
 import concurrent.futures
@@ -12,6 +13,27 @@ try:
 except ImportError:
     from yaml import Loader, Dumper
 import pprint
+
+
+class StatusPrinter:
+    """
+    Only works with ThreadPoolExecutor, but requires hacks in every
+    logger call: need a newline character everytime to avoid overwriting
+    the current output.
+    """
+    def __init__(self):
+        self.msg = {}
+
+    def update(self, _id, data):
+        if logger.isEnabledFor(logging.INFO) or logger.isEnabledFor(logging.DEBUG):
+            return
+
+        self.msg[_id] = data
+        out = "   |   ".join(f"Scanning tree {key}: {value}" for key, value in self.msg.items())
+        sys.stdout.write('\r' + out)
+        # sys.stdout.write("\033[K")
+        sys.stdout.flush()
+
 
 # Obsolete
 def check_empty_items(base_tree):
@@ -88,7 +110,7 @@ if __name__ == "__main__":
         help='hash or crc algorithm to use for integrity checking.',
         required=False)
     levels = ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
-    parser.add_argument('--log', action='store', default="DEBUG",
+    parser.add_argument('--log', action='store', default="INFO",
         choices=levels,
         help='Log level. [DEBUG, INFO, WARNING, ERROR, CRITICAL]')
     implementations = ('pure_dict', 'mixed_dict', 'pure_list')
@@ -132,23 +154,31 @@ Defaulting back to {args.csum_name}.")
     # serialize python objects into json or yaml)
     # * don't keep everything in memory, use iterators / generators
 
+    printer = StatusPrinter()
+
     if not args.path2:
-        gen = fs_struct_type(Path(args.path1), args)
+        gen = fs_struct_type(Path(args.path1), args, printer)
         gen.generate(no_output=args.no_output)
         exit(0)
 
     args_set = (args.path1, args.path2)
 
-    executor = concurrent.futures.ProcessPoolExecutor()
+    # executor = concurrent.futures.ProcessPoolExecutor()
+    # Only threads work for sharing a common printer.
+    executor = concurrent.futures.ThreadPoolExecutor()
     queue = []
+
     for path_str in args_set:
         path = Path(path_str)
-        gen = fs_struct_type(path, args)
+        gen = fs_struct_type(path, args, printer)
         if path.is_dir():
+            # Generate yaml tree file
             future = executor.submit(gen.generate, no_output=args.no_output)
         else:
+            # Load a yaml tree file
             future = executor.submit(load_yaml, path)
         queue.append(future)
+
     results = []
     for future in queue:
         results.append(future.result())
