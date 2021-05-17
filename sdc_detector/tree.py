@@ -88,11 +88,19 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
                         )
                     )
                 for f in files:
-                    directory[dn].append(self._get_file_info(root, f))
+                    try:
+                        directory[dn].append(self._get_file_info(root, f))
+                    except PermissionError as e:
+                        logger.critical(f"\n{e}")
+                        continue
             elif files:
                 # directory[dn].append([self.get_file_info(root, f) for f in files])
                 for f in files:
-                    directory[dn].append(self._get_file_info(root, f))
+                    try:
+                        directory[dn].append(self._get_file_info(root, f))
+                    except PermissionError as e:
+                        logger.critical(f"\n{e}")
+                        continue
             return directory
 
     def _get_file_info(self, root, filename): # dict
@@ -141,10 +149,18 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
                         base_path=os.path.join(base_path, d)
                     )
                 for f in files:
-                    directory[f] = self._get_file_info(root, f)
+                    try:
+                        directory[f] = self._get_file_info(root, f)
+                    except PermissionError as e:
+                        logger.critical(f"\n{e}")
+                        continue
             elif files:
                 for f in files:
-                    directory[f] = self._get_file_info(root, f)
+                    try:
+                        directory[f] = self._get_file_info(root, f)
+                    except PermissionError as e:
+                        logger.critical(f"\n{e}")
+                        continue
             return directory
 
     def _get_file_info(self, root, filename): # dict
@@ -188,9 +204,16 @@ class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
                         )
                     )
                 for f in files:
-                    directory.append(self._get_file_info(root, f))
+                    try:
+                        directory.append(self._get_file_info(root, f))
+                    except PermissionError as e:
+                        logger.critical(f"\n{e}")
+                        continue
             elif files:
-                directory.append([self._get_file_info(root, f) for f in files])
+                try:
+                    directory.append([self._get_file_info(root, f) for f in files])
+                except PermissionError as e:
+                    logger.critical(f"\n{e}")
             return directory
 
     def _get_file_info(self, root, filename):

@@ -30,8 +30,8 @@ class StatusPrinter:
 
         self.msg[_id] = data
         out = "   |   ".join(f"Scanning tree {key}: {value}" for key, value in self.msg.items())
-        sys.stdout.write('\r' + out)
         # sys.stdout.write("\033[K")
+        sys.stdout.write('\r' + out)
         sys.stdout.flush()
 
 
@@ -110,13 +110,13 @@ if __name__ == "__main__":
         help='hash or crc algorithm to use for integrity checking.',
         required=False)
     levels = ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
-    parser.add_argument('--log', action='store', default="INFO",
+    parser.add_argument('--log', action='store', default="WARNING",
         choices=levels,
         help='Log level. [DEBUG, INFO, WARNING, ERROR, CRITICAL]')
     implementations = ('pure_dict', 'mixed_dict', 'pure_list')
-    parser.add_argument('--tree_type', action='store', default='pure_dict',
+    parser.add_argument('--tree_type', action='store', default='mixed_dict',
         choices=implementations,
-        help=f'Tree representation implementation to use. Default "pure_dict".')
+        help=f'Tree representation implementation to use. Default "mixed_dict".')
     args = parser.parse_args()
 
     log_level = getattr(logging, args.log.upper(), None)
