@@ -23,15 +23,27 @@ class StatusPrinter:
     """
     def __init__(self):
         self.msg = {}
+        # HACK Avoid overwriting the first line
+        print("\n")
+
+    def clear(self):
+        """Blank any previous output."""
+        sys.stdout.write("\033[A\33[2KT\r")
+        # sys.stdout.flush()
 
     def update(self, _id, data):
         if logger.isEnabledFor(logging.INFO) or logger.isEnabledFor(logging.DEBUG):
             return
 
         self.msg[_id] = data
-        out = "   |   ".join(f"Scanning tree {key}: {value}" for key, value in self.msg.items())
-        sys.stdout.write("\33[2K\r") # Erase & go back to the beginning of the line
-        sys.stdout.write(out)
+        out = "\n".join(f"Scanning tree: {value}" for key, value in self.msg.items())
+
+        # Erase & go back to the beginning of the line (use with " | ".join(...))
+        # sys.stdout.write("\33[2K\r" + out)
+
+        # Move column up, erase go back to beginning of the line
+        sys.stdout.write("\033[A\33[2KT\r" + out)
+
         sys.stdout.flush()
 
 

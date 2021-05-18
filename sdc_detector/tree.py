@@ -12,6 +12,8 @@ except ImportError:
 
 from .csum import *
 
+#TODO we could walk the trees manually with a for k1, k2 in d1.keys(), d2.keys():
+
 class DirTreeGenerator:
     def __init__(self, path, _args, printer):
         self._csum_name = _args.csum_name
@@ -54,7 +56,6 @@ class DirTreeGenerator:
     def _get_file_info(self, root, filename):
         raise NotImplementedError()
 
-#TODO we could walk the trees manually with a for k1, k2 in d1.keys(), d2.keys():
 
 class DirTreeGeneratorMixed(DirTreeGenerator):
     """Default implementation uses Dicts, and Lists for directory content."""
@@ -64,6 +65,8 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
     def _generate(self):
         """Return dictionary representing dir tree structure."""
         dir_content = self._recursive_stat(self._path)
+        # self.printer.clear()
+
         # Rename the root node to be similar across comparisons
         # dir_content['root'] = dir_content.pop(base_path.name)
         dir_content['root'] = dir_content[self._path.name]
@@ -81,7 +84,7 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
             if dirs:
                 for d in dirs:
                     dirname = os.path.join(base_path, d)
-                    logger.debug(f"Scanning {dirname}...")
+                    logger.info(f"Scanning {dirname}...")
                     self.printer.update(id(self), dirname)
                     directory[dn].append(self._recursive_stat(
                         base_path=os.path.join(base_path, d)
@@ -127,6 +130,8 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
     def _generate(self):
         """Return dictionary representing dir tree structure."""
         dir_content = self._recursive_stat(self._path)
+        # self.printer.clear()
+
         # Add back a root node -> this might not be necessary
         # dir_contents = {}
         # dir_contents['root'] = dir_content
@@ -143,7 +148,7 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
             if dirs:
                 for d in dirs:
                     dirname = os.path.join(base_path, d)
-                    logger.debug(f"Scanning {dirname}...")
+                    logger.info(f"Scanning {dirname}...")
                     self.printer.update(id(self), dirname)
                     directory[d] = self._recursive_stat(
                         base_path=os.path.join(base_path, d)
@@ -182,6 +187,8 @@ class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
     def _generate(self):
         """Returns List of Lists representing dir tree structure."""
         dir_content = self._recursive_stat(self._path)
+        # self.printer.clear()
+
         # Rename the root node since it will be different accross mounts
         dir_content[0] = 'root'
         return dir_content
@@ -197,7 +204,7 @@ class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
             if dirs:
                 for d in dirs:
                     dirname = os.path.join(base_path, d)
-                    logger.debug(f"Scanning {dirname}...")
+                    logger.info(f"Scanning {dirname}...")
                     self.printer.update(id(self), dirname)
                     directory.append(
                         self._recursive_stat(base_path=os.path.join(base_path, d)
