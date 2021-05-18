@@ -30,8 +30,8 @@ class StatusPrinter:
 
         self.msg[_id] = data
         out = "   |   ".join(f"Scanning tree {key}: {value}" for key, value in self.msg.items())
-        # sys.stdout.write("\033[K")
-        sys.stdout.write('\r' + out)
+        sys.stdout.write("\33[2K\r") # Erase & go back to the beginning of the line
+        sys.stdout.write(out)
         sys.stdout.flush()
 
 
