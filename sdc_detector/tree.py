@@ -45,7 +45,7 @@ class DirTreeGenerator:
                     + ".yaml"
             with open(fpath, 'w') as op:
                 dump(dir_content, stream=op, Dumper=Dumper)
-            print(f"Wrote results to YAML file: {fpath}.")
+            print(f"\nWrote results to YAML file: {fpath}.")
         return dir_content
 
     # Virtual

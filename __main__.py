@@ -38,11 +38,13 @@ class StatusPrinter:
         self.msg[_id] = data
         out = "\n".join(f"Scanning tree: {value}" for key, value in self.msg.items())
 
-        # Erase & go back to the beginning of the line (use with " | ".join(...))
-        # sys.stdout.write("\33[2K\r" + out)
-
-        # Move column up, erase go back to beginning of the line
-        sys.stdout.write("\033[A\33[2KT\r" + out)
+        if len(self.msg.keys()) <= 1:
+            # Erase & go back to the beginning of the line 
+            # can be used with " | ".join(...)
+            sys.stdout.write("\33[2K\r" + out)
+        else:
+            # Move column up, erase go back to beginning of the line
+            sys.stdout.write("\033[A\33[2KT\r" + out)
 
         sys.stdout.flush()
 
