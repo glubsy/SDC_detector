@@ -96,6 +96,10 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
                     except PermissionError as e:
                         logger.critical(f"\n{e}")
                         continue
+                    except OSError as e:
+                        logger.critical(f"\n{e}")
+                        directory[dn].append({'n': f, 'cs': 0, 'sz': 0})
+                        continue
             elif files:
                 # directory[dn].append([self.get_file_info(root, f) for f in files])
                 for f in files:
@@ -103,6 +107,10 @@ class DirTreeGeneratorMixed(DirTreeGenerator):
                         directory[dn].append(self._get_file_info(root, f))
                     except PermissionError as e:
                         logger.critical(f"\n{e}")
+                        continue
+                    except OSError as e:
+                        logger.critical(f"\n{e}")
+                        directory[dn].append({'n': f, 'cs': 0, 'sz': 0})
                         continue
             return directory
 
@@ -159,12 +167,20 @@ class DirTreeGeneratorPureDict(DirTreeGenerator):
                     except PermissionError as e:
                         logger.critical(f"\n{e}")
                         continue
+                    except OSError as e:
+                        logger.critical(f"\n{e}")
+                        directory[f] = {'cs': 0, 'sz': 0}
+                        continue
             elif files:
                 for f in files:
                     try:
                         directory[f] = self._get_file_info(root, f)
                     except PermissionError as e:
                         logger.critical(f"\n{e}")
+                        continue
+                    except OSError as e:
+                        logger.critical(f"\n{e}")
+                        directory[f] = {'cs': 0, 'sz': 0}
                         continue
             return directory
 
@@ -216,11 +232,23 @@ class DirTreeGeneratorPureList(DirTreeGeneratorMixed):
                     except PermissionError as e:
                         logger.critical(f"\n{e}")
                         continue
+                    except OSError as e:
+                        logger.critical(f"\n{e}")
+                        directory.append([f, 0, 0])
+                        continue
             elif files:
-                try:
-                    directory.append([self._get_file_info(root, f) for f in files])
-                except PermissionError as e:
-                    logger.critical(f"\n{e}")
+                children = []
+                for f in files:
+                    try:
+                        children.append(self._get_file_info(root, f))
+                    except PermissionError as e:
+                        logger.critical(f"\n{e}")
+                        continue
+                    except OSError as e:
+                        logger.critical(f"\n{e}")
+                        children.append([f, 0, 0])
+                        continue
+                directory.append(children)
             return directory
 
     def _get_file_info(self, root, filename):
