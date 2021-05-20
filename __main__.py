@@ -184,9 +184,9 @@ Defaulting back to {args.csum_name}.")
 
     for path_str in args_set:
         path = Path(path_str)
-        gen = fs_struct_type(path, args, printer)
         if path.is_dir():
             # Generate yaml tree file
+            gen = fs_struct_type(path, args, printer)
             future = executor.submit(gen.generate, no_output=args.no_output)
         else:
             # Load a yaml tree file
@@ -209,7 +209,8 @@ Defaulting back to {args.csum_name}.")
     # TODO extra option: for each file listed in yaml, compare with a target
     # dir (partial backups) only those files.
     # HACK always place first argument passed to the left hand side
-    get_comparison(fs_struct_type).compare(
+    if not get_comparison(fs_struct_type).compare(
         results[args_set.index(args.path1)],
         results[args_set.index(args.path2)],
-        )
+        ):
+        print("\nNo difference found. All is good.\n")

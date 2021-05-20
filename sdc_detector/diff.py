@@ -44,9 +44,10 @@ class DeepDiffComparison(TreeComparison):
         """
         ddiff = self._get_diff(tree1, tree2)
 
+        had_diff = False
+
         if not ddiff:
-            print("No difference found. All is good!")
-            return
+            return had_diff
 
         if logger.isEnabledFor(logging.DEBUG):
             pprint.pprint(ddiff, indent=2)
@@ -57,6 +58,7 @@ class DeepDiffComparison(TreeComparison):
         set_added = ddiff.get('iterable_item_added')\
                     or ddiff.get('dictionary_item_added')
         if set_added is not None:
+            had_diff = True
             list_added = list(set_added)
             for item in list_added:
                 logger.debug(f"added path: {item.path()}"\
@@ -65,6 +67,7 @@ class DeepDiffComparison(TreeComparison):
         set_removed = ddiff.get('iterable_item_removed')\
                     or ddiff.get('dictionary_item_removed')
         if set_removed is not None:
+            had_diff = True
             list_removed = list(set_removed)
             for item in list_removed:
                 logger.debug(f"removed path: {item.path()}"\
@@ -72,10 +75,13 @@ class DeepDiffComparison(TreeComparison):
 
         set_changed = ddiff.get('values_changed')
         if set_changed is not None:
+            had_diff = True
             changed_dict = self.parse_ddiff_changed(set_changed, tree1)
             for k, v in changed_dict.items():
                 sentence = ", ".join(v)
                 print(f"{k} {sentence}")
+
+        return had_diff
 
     @classmethod
     def add_to_result(cls, parsed_path, change_type, change):
