@@ -101,6 +101,9 @@ class DeepDiffComparison(TreeComparison):
     def parse_ddiff_changed(cls, set_changed, base_tree):
         raise NotImplementedError
 
+    def _get_diff(self, tree1, tree2):
+        raise NotImplementedError
+
 
 class ComparisonMixed(DeepDiffComparison):
     """
@@ -299,7 +302,7 @@ def split_ddiff_path(string):
     str: root['root'][1]['CGI'][2]['crc'] -> list: ["root", "1", "CGI", "2", "crc"]
     """
     # path_items = [tuple(re.search('\[(.+)\]', key).group(1).split('][')) for key in diff.keys()]
-    res = [s.strip("\'") for s in re.search('\[(.+)\]', string).group(1).split('][')]
+    res = [s.strip("\'") for s in re.search(r'\[(.+)\]', string).group(1).split('][')]
     logger.debug(f"split_ddif_path(): {res}")
     return res
 

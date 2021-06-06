@@ -58,7 +58,7 @@ def check_empty_items(base_tree):
             for item in dict_or_list:
                 path = path + recurse(item, path)
                 if item.get('sz') == 0:
-                    empty_items.add([item, sz])
+                    empty_items.add([item, 0])
                 return path
         elif isinstance(dict_or_list, dict):
             for item in dict_or_list.values():
@@ -69,7 +69,7 @@ def check_empty_items(base_tree):
                     if not fsize: # empty file!
                         fpath = recurse(item, path)
                         empty_items.add([fname, fsize])
-            return item.get("n")
+                return item.get("n")
 
     for item in base_tree.values():
         recurse(item, 'root')
