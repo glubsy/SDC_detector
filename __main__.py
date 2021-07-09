@@ -3,6 +3,7 @@ import os
 import sys
 import argparse
 import logging
+from subprocess import run, CalledProcessError
 import concurrent.futures
 logger = logging.getLogger()
 from pathlib import Path
@@ -13,6 +14,34 @@ try:
 except ImportError:
     from yaml import Loader, Dumper
 import pprint
+
+# TODO move this into the StatusPrinter class
+TERM_CHARS = {
+    'el': '\33[K', # clr_eol, clear the line
+    'el1': '\33[2K', # clr_bol, clear to the beginning of line
+    'cuu1': '\033[A' # cursor_up, move cursor up
+}
+# print(f"DEBUG: Default special characters: {dict([(key, list(val)) for key, val in TERM_CHARS.items()])}")
+
+
+def get_terminal_char(char_type):
+    """Query terminfo string capabilities with tput for a non-printable 
+    character that can be used by the current terminal (see man 5 terminfo)."""
+    try:
+        proc = run(["tput", char_type],
+            capture_output=True, check=True, text=True
+        )
+        ret = proc.stdout
+        return ret
+    except CalledProcessError as e:
+        print(f"Error getting capability \"{char_type}\" from tput: {e}")
+    return None
+
+for key, value in TERM_CHARS.items():
+    char = get_terminal_char(key)
+    if char is not None:
+        TERM_CHARS[key] = char
+# print(f"DEBUG: Updated special characters: {dict([(key, list(val)) for key, val in TERM_CHARS.items()])}")
 
 
 class StatusPrinter:
@@ -41,10 +70,10 @@ class StatusPrinter:
         if len(self.msg.keys()) <= 1:
             # Erase & go back to the beginning of the line 
             # can be used with " | ".join(...)
-            sys.stdout.write("\33[2K\r" + out)
+            sys.stdout.write(TERM_CHARS['el1'] + '\r' + out)
         else:
             # Move column up, erase go back to beginning of the line
-            sys.stdout.write("\033[A\33[2KT\r" + out)
+            sys.stdout.write(TERM_CHARS['cuu1'] + TERM_CHARS['el1'] + '\r' + out)
 
         sys.stdout.flush()
 
