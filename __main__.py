@@ -8,7 +8,7 @@ import concurrent.futures
 logger = logging.getLogger()
 from pathlib import Path
 
-from yaml import load, dump, parse
+from yaml import load, dump
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
@@ -16,32 +16,54 @@ except ImportError:
 import pprint
 
 # TODO move this into the StatusPrinter class
-TERM_CHARS = {
-    'el': '\33[K', # clr_eol, clear the line
-    'el1': '\33[2K', # clr_bol, clear to the beginning of line
-    'cuu1': '\033[A' # cursor_up, move cursor up
+TERM_SEQ = {}
+DEFAULT_TERM_SEQ = {
+    'el': '\33[K', # clr_eol, clear from the cursor to the end of the line
+    'el1': '\33[2K', # clr_bol, clear from the cursor to the beginning of the line
+                     # The <n> parameter has 3 possible values according to
+                     # https://docs.microsoft.com/en-us/windows/console/console-virtual-terminal-sequences#text-modification
+                     # so technically, this value is actually el2
+    'cuu1': '\033[A', # cursor_up, move cursor up by one line
+    'cuu2': '\033[2A'  # same as above, 2 lines
 }
-# print(f"DEBUG: Default special characters: {dict([(key, list(val)) for key, val in TERM_CHARS.items()])}")
 
-
-def get_terminal_char(char_type):
-    """Query terminfo string capabilities with tput for a non-printable 
+def get_term_seq(char_type):
+    """Query terminfo string capabilities with tput for a non-printable
     character that can be used by the current terminal (see man 5 terminfo)."""
     try:
         proc = run(["tput", char_type],
             capture_output=True, check=True, text=True
         )
-        ret = proc.stdout
-        return ret
+        return proc.stdout  # or stdout.decode() if text=False
     except CalledProcessError as e:
-        print(f"Error getting capability \"{char_type}\" from tput: {e}")
-    return None
+        print(f"Error getting capability \"{char_type}\" for this terminal: {e}")
+    return ""
 
-for key, value in TERM_CHARS.items():
-    char = get_terminal_char(key)
-    if char is not None:
-        TERM_CHARS[key] = char
-# print(f"DEBUG: Updated special characters: {dict([(key, list(val)) for key, val in TERM_CHARS.items()])}")
+# Build sequences ahead of time
+for key, value in DEFAULT_TERM_SEQ.items():
+
+    # Fallback, because not sure how to query capabilities on Windows
+    if sys.platform == "win32":
+        TERM_SEQ[key] = ""
+        continue
+
+    # Special key. Sequences with parameters (ie. "2") are not retrievable
+    if key == 'cuu2':
+        if TERM_SEQ.get('cuu1') is not None:  # we don't have this key yet
+            # Insert "2" parameter in the seq
+            idx = TERM_SEQ['cuu1'].rfind('A')
+            if idx == -1:
+                TERM_SEQ[key] = TERM_SEQ['cuu1'] + TERM_SEQ['cuu1']
+                continue
+            TERM_SEQ['cuu2'] = TERM_SEQ['cuu1'][:idx] + "2" + TERM_SEQ['cuu1'][idx:]
+            continue
+        TERM_SEQ[key] = DEFAULT_TERM_SEQ['cuu2']
+        continue
+
+    TERM_SEQ[key] = get_term_seq(key)
+
+# print(f"Default key sequences: {dict([(key, list(val)) for key, val in DEFAULT_TERM_SEQ.items()])}")
+# print(f"Updated key sequences: {dict([(key, list(val)) for key, val in TERM_SEQ.items()])}")
 
 
 class StatusPrinter:
@@ -65,15 +87,15 @@ class StatusPrinter:
             return
 
         self.msg[_id] = data
-        out = "\n".join(f"Scanning tree: {value}" for key, value in self.msg.items())
+        out = "\n".join(f"Scanning tree: {value}" for _, value in self.msg.items())
 
         if len(self.msg.keys()) <= 1:
             # Erase & go back to the beginning of the line 
             # can be used with " | ".join(...)
-            sys.stdout.write(TERM_CHARS['el1'] + '\r' + out)
+            sys.stdout.write(TERM_SEQ['el1'] + '\r' + out)
         else:
             # Move column up, erase go back to beginning of the line
-            sys.stdout.write(TERM_CHARS['cuu1'] + TERM_CHARS['el1'] + '\r' + out)
+            sys.stdout.write(TERM_SEQ['cuu1'] + TERM_SEQ['el1'] + '\r' + out)
 
         sys.stdout.flush()
 
